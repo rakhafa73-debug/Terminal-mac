@@ -1,0 +1,458 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1e1e20">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Terminal Mac</title>
+<style>
+:root {
+  /* Layout: a macOS-style terminal window centered on the page, with a fake file system */
+  --bg: #e8e8ea;
+  --term: #ffffff;
+  --bar: #e2e2e4;
+  --border: #d1d1d6;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --accent: #15803d;
+  --dir: #0b5cad;
+  --err: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161617;
+    --term: #1e1e20;
+    --bar: #2c2c2e;
+    --border: #3a3a3c;
+    --fg: #e5e5e7;
+    --muted: #8e8e93;
+    --accent: #4cd964;
+    --dir: #5ac8fa;
+    --err: #ff7b72;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161617;
+  --term: #1e1e20;
+  --bar: #2c2c2e;
+  --border: #3a3a3c;
+  --fg: #e5e5e7;
+  --muted: #8e8e93;
+  --accent: #4cd964;
+  --dir: #5ac8fa;
+  --err: #ff7b72;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+}
+
+.win {
+  max-width: 860px;
+  height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--term);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+}
+
+.bar {
+  position: relative;
+  flex: 0 0 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--border);
+}
+.dots { display: flex; gap: 8px; }
+.dots span { width: 12px; height: 12px; border-radius: 50%; }
+.dots .r { background: #ff5f57; }
+.dots .y { background: #febc2e; }
+.dots .g { background: #28c840; }
+.bar-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.term {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: text;
+}
+.line { white-space: pre-wrap; word-break: break-word; }
+.user { color: var(--accent); }
+.path { color: var(--dir); }
+.dir { color: var(--dir); font-weight: 600; }
+.err { color: var(--err); }
+.muted { color: var(--muted); }
+
+.row { display: flex; align-items: baseline; white-space: pre; }
+.row .prompt { flex: 0 0 auto; white-space: pre; }
+.row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  caret-color: var(--accent);
+}
+
+@media (max-width: 600px) {
+  .term { font-size: 13px; }
+  .row input { font-size: 16px; }
+}
+</style>
+
+<div class="win">
+  <div class="bar">
+    <div class="dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+    <div class="bar-title">saya — zsh — 80×24</div>
+  </div>
+  <div class="term" id="term">
+    <div id="out"></div>
+    <div class="row" id="row">
+      <span class="prompt" id="prompt"></span>
+      <input id="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Masukkan perintah">
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var out = document.getElementById('out');
+  var term = document.getElementById('term');
+  var input = document.getElementById('cmd');
+  var promptEl = document.getElementById('prompt');
+
+  // Simulated file system
+  var root = {
+    type: 'dir',
+    children: {
+      Users: {
+        type: 'dir',
+        children: {
+          saya: {
+            type: 'dir',
+            children: {
+              Documents: {
+                type: 'dir',
+                children: {
+                  'catatan.txt': { type: 'file', content: 'Ini catatan pertama saya.\nCoba perintah: cat catatan.txt' }
+                }
+              },
+              Downloads: { type: 'dir', children: {} },
+              Desktop: { type: 'dir', children: {} },
+              'README.md': { type: 'file', content: 'Selamat datang di Terminal!\nKetik "help" untuk melihat daftar perintah.' }
+            }
+          }
+        }
+      },
+      Applications: { type: 'dir', children: {} }
+    }
+  };
+
+  var cwd = ['Users', 'saya'];
+  var history = [];
+  var histIdx = 0;
+
+  function getNode(parts) {
+    var n = root;
+    for (var i = 0; i < parts.length; i++) {
+      if (!n.children || !Object.prototype.hasOwnProperty.call(n.children, parts[i])) return null;
+      n = n.children[parts[i]];
+    }
+    return n;
+  }
+
+  function resolve(p) {
+    var parts;
+    if (p === '~' || p.indexOf('~/') === 0) {
+      parts = ['Users', 'saya'];
+      p = p.slice(1);
+    } else if (p.charAt(0) === '/') {
+      parts = [];
+    } else {
+      parts = cwd.slice();
+    }
+    var segs = p.split('/');
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (!s || s === '.') continue;
+      if (s === '..') { parts.pop(); continue; }
+      parts.push(s);
+    }
+    return parts;
+  }
+
+  function pathStr(parts) { return '/' + parts.join('/'); }
+
+  function dispPath() {
+    if (cwd.length >= 2 && cwd[0] === 'Users' && cwd[1] === 'saya') {
+      var rest = cwd.slice(2);
+      return rest.length ? '~/' + rest.join('/') : '~';
+    }
+    return pathStr(cwd);
+  }
+
+  function renderPrompt() {
+    promptEl.textContent = '';
+    var a = document.createElement('span'); a.className = 'user'; a.textContent = 'saya@MacBook ';
+    var b = document.createElement('span'); b.className = 'path'; b.textContent = dispPath() + ' ';
+    var c = document.createElement('span'); c.className = 'user'; c.textContent = '% ';
+    promptEl.appendChild(a); promptEl.appendChild(b); promptEl.appendChild(c);
+  }
+
+  // Print a line. segs is a string, or an array of {t, c} segments.
+  function print(segs, cls) {
+    var d = document.createElement('div');
+    d.className = 'line' + (cls ? ' ' + cls : '');
+    if (typeof segs === 'string') {
+      d.textContent = segs;
+    } else {
+      for (var i = 0; i < segs.length; i++) {
+        var s = document.createElement('span');
+        s.textContent = segs[i].t;
+        if (segs[i].c) s.className = segs[i].c;
+        d.appendChild(s);
+      }
+    }
+    out.appendChild(d);
+  }
+
+  function err(msg) { print(msg, 'err'); }
+
+  function scrollBottom() { term.scrollTop = term.scrollHeight; }
+
+  function parentAndName(p) {
+    var parts = resolve(p);
+    var name = parts.pop();
+    var parent = getNode(parts);
+    return { parent: parent, name: name, parts: parts };
+  }
+
+  var commands = {
+    help: function () {
+      print('Perintah yang tersedia:');
+      print('  ls [-a] [folder]      daftar isi folder');
+      print('  cd [folder]           pindah folder (cd .. untuk naik, cd ~ untuk home)');
+      print('  pwd                   tampilkan lokasi folder sekarang');
+      print('  cat <file>            tampilkan isi file');
+      print('  echo <teks>           tampilkan teks (echo teks > file untuk menyimpan)');
+      print('  mkdir <folder>        buat folder baru');
+      print('  touch <file>          buat file kosong');
+      print('  rm [-r] <nama>        hapus file (atau folder dengan -r)');
+      print('  date                  tampilkan tanggal dan waktu');
+      print('  whoami                tampilkan nama pengguna');
+      print('  uname                 tampilkan nama sistem');
+      print('  history               tampilkan riwayat perintah');
+      print('  clear                 bersihkan layar (atau Ctrl+L)');
+    },
+    pwd: function () { print(pathStr(cwd)); },
+    ls: function (args) {
+      var showAll = false, paths = [];
+      for (var i = 0; i < args.length; i++) {
+        if (args[i] === '-a' || args[i] === '-la' || args[i] === '-al') showAll = true;
+        else paths.push(args[i]);
+      }
+      var target = paths.length ? paths[0] : '.';
+      var n = getNode(resolve(target));
+      if (!n) { err('ls: ' + target + ': No such file or directory'); return; }
+      if (n.type === 'file') { print(target); return; }
+      var names = Object.keys(n.children).filter(function (k) { return showAll || k.charAt(0) !== '.'; }).sort();
+      if (!names.length) return;
+      var segs = [];
+      names.forEach(function (k, idx) {
+        var isDir = n.children[k].type === 'dir';
+        segs.push({ t: isDir ? k + '/' : k, c: isDir ? 'dir' : '' });
+        if (idx < names.length - 1) segs.push({ t: '   ' });
+      });
+      print(segs);
+    },
+    cd: function (args) {
+      var t = args[0] || '~';
+      var parts = resolve(t);
+      var n = getNode(parts);
+      if (!n) { err('cd: no such file or directory: ' + t); return; }
+      if (n.type !== 'dir') { err('cd: not a directory: ' + t); return; }
+      cwd = parts;
+    },
+    cat: function (args) {
+      if (!args.length) { err('cat: sintaks: cat <file>'); return; }
+      var n = getNode(resolve(args[0]));
+      if (!n) { err('cat: ' + args[0] + ': No such file or directory'); return; }
+      if (n.type === 'dir') { err('cat: ' + args[0] + ': Is a directory'); return; }
+      print(n.content);
+    },
+    echo: function (args) {
+      print(args.join(' ').replace(/^["']|["']$/g, ''));
+    },
+    mkdir: function (args) {
+      if (!args.length) { err('mkdir: sintaks: mkdir <folder>'); return; }
+      var r = parentAndName(args[0]);
+      if (!r.parent || r.parent.type !== 'dir') { err('mkdir: ' + args[0] + ': No such file or directory'); return; }
+      if (r.parent.children[r.name]) { err('mkdir: ' + args[0] + ': File exists'); return; }
+      r.parent.children[r.name] = { type: 'dir', children: {} };
+    },
+    touch: function (args) {
+      if (!args.length) { err('touch: sintaks: touch <file>'); return; }
+      var r = parentAndName(args[0]);
+      if (!r.parent || r.parent.type !== 'dir') { err('touch: ' + args[0] + ': No such file or directory'); return; }
+      if (!r.parent.children[r.name]) r.parent.children[r.name] = { type: 'file', content: '' };
+    },
+    rm: function (args) {
+      var recursive = false, names = [];
+      for (var i = 0; i < args.length; i++) {
+        if (args[i] === '-r' || args[i] === '-rf' || args[i] === '-R') recursive = true;
+        else names.push(args[i]);
+      }
+      if (!names.length) { err('rm: sintaks: rm [-r] <nama>'); return; }
+      var r = parentAndName(names[0]);
+      var target = r.parent && r.parent.children[r.name];
+      if (!target) { err('rm: ' + names[0] + ': No such file or directory'); return; }
+      if (target.type === 'dir' && !recursive) { err('rm: ' + names[0] + ': is a directory (gunakan rm -r)'); return; }
+      delete r.parent.children[r.name];
+    },
+    date: function () { print(new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'long' })); },
+    whoami: function () { print('saya'); },
+    uname: function (args) {
+      print(args.indexOf('-a') >= 0 ? 'Darwin MacBook 24.0.0 Darwin Kernel arm64' : 'Darwin');
+    },
+    history: function () {
+      history.forEach(function (h, i) { print(String(i + 1).padStart(5, ' ') + '  ' + h); });
+    },
+    clear: function () { out.replaceChildren(); },
+    exit: function () { print('Jendela ini tidak bisa ditutup dari sini. (Ini simulasi.)', 'muted'); }
+  };
+
+  function execute(raw) {
+    var line = raw.trim();
+    print(promptSegs(raw));
+    if (!line) return;
+    history.push(line);
+    histIdx = history.length;
+
+    var redir = line.match(/^echo\s+(.*?)\s*>\s*(\S+)$/);
+    if (redir) {
+      var text = redir[1].replace(/^["']|["']$/g, '');
+      var r = parentAndName(redir[2]);
+      if (!r.parent || r.parent.type !== 'dir') err('zsh: no such file or directory: ' + redir[2]);
+      else if (r.parent.children[r.name] && r.parent.children[r.name].type === 'dir') err('zsh: is a directory: ' + redir[2]);
+      else r.parent.children[r.name] = { type: 'file', content: text };
+      return;
+    }
+
+    var parts = line.split(/\s+/);
+    var name = parts[0];
+    var args = parts.slice(1);
+    if (!Object.prototype.hasOwnProperty.call(commands, name)) {
+      err('zsh: command not found: ' + name);
+      return;
+    }
+    commands[name](args, line);
+  }
+
+  function promptSegs(cmd) {
+    return [
+      { t: 'saya@MacBook ', c: 'user' },
+      { t: dispPath() + ' ', c: 'path' },
+      { t: '% ', c: 'user' },
+      { t: cmd }
+    ];
+  }
+
+  function tabComplete() {
+    var v = input.value;
+    var lastSpace = v.lastIndexOf(' ');
+    var prefix = v.slice(lastSpace + 1);
+    var n = getNode(cwd);
+    if (!n || n.type !== 'dir') return;
+    var matches = Object.keys(n.children).filter(function (k) { return k.indexOf(prefix) === 0; });
+    if (matches.length === 1) {
+      var m = matches[0];
+      if (n.children[m].type === 'dir') m += '/';
+      input.value = v.slice(0, lastSpace + 1) + m;
+    } else if (matches.length > 1) {
+      print(matches.sort().join('   '), 'muted');
+    }
+  }
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var v = input.value;
+      input.value = '';
+      execute(v);
+      renderPrompt();
+      scrollBottom();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (histIdx > 0) histIdx--;
+      input.value = history[histIdx] || '';
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      histIdx++;
+      if (histIdx >= history.length) { histIdx = history.length; input.value = ''; }
+      else input.value = history[histIdx];
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      tabComplete();
+    } else if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
+      e.preventDefault();
+      out.replaceChildren();
+    } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      print(promptSegs(input.value).slice(0, 3).concat([{ t: input.value + '^C' }]));
+      input.value = '';
+    }
+  });
+
+  term.addEventListener('click', function () {
+    var sel = window.getSelection ? window.getSelection().toString() : '';
+    if (!sel) input.focus();
+  });
+
+  // Welcome message
+  print('Last login: ' + new Date().toLocaleString('id-ID'), 'muted');
+  print("Ketik 'help' untuk melihat daftar perintah.", 'muted');
+  renderPrompt();
+  input.focus();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
+</script>
